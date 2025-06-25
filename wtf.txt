@@ -1,0 +1,9 @@
+MY_ARRAY: DB 1, 2, 4, 6
+MVI C, 4
+LXI H, MY_ARRAY
+loop:
+MOV A, M
+
+INX H
+DCR C
+JNZ loop
