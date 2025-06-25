@@ -1,8 +1,11 @@
-MY_ARRAY: DB 1, 2, 4, 6
-MVI C, 4
+MY_ARRAY: DB "H", "E", "Y", 6
+MVI C, 0x04
 LXI H, MY_ARRAY
 loop:
 MOV A, M
+OUT 0
+OUT 0
+
 
 INX H
 DCR C

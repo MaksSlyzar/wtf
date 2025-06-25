@@ -134,7 +134,7 @@ MOV_OPCODES = {
     "MOV A,H": 0x7C, "MOV A,L": 0x7D, "MOV A,M": 0x7E,
     "MOV B,A": 0x47, "MOV C,A": 0x4F, "MOV D,A": 0x57, "MOV E,A": 0x5F,
     "MOV H,A": 0x67, "MOV L,A": 0x6F, "MOV M,A": 0x77,
-    "MOV B,B": 0x40, "MOV C,C": 0x49  # додай більше, якщо потрібно
+    "MOV B,B": 0x40, "MOV C,C": 0x49  
 }
 
 MVI_CODES = {
@@ -380,22 +380,19 @@ def assemble_program(lines):
     labels = {}
     addr = 0
 
-    # 1-й прохід: збираємо мітки та визначаємо адреси
     for line in lines:
         stripped = line.strip()
         if not stripped or stripped.startswith(';'):
             continue
 
-        # Перевірка, чи є мітка в рядку
         if ':' in stripped:
             label_part, rest = stripped.split(':', 1)
             label = label_part.strip().upper()
             labels[label] = addr
-            stripped = rest.strip()  # тепер обробляємо залишок як інструкцію
+            stripped = rest.strip()  
             if not stripped:
-                continue  # якщо після мітки нічого немає, переходимо до наступного рядка
+                continue  
 
-        # Тепер рахуємо довжину інструкції в байтах, щоб оновити addr
         cmd = stripped.upper().split()[0]
         if cmd == "MVI" or cmd == "MOV" or cmd == "ADD" or cmd == "ADC":
             if cmd == "MVI":
@@ -405,14 +402,12 @@ def assemble_program(lines):
         elif cmd == "LXI" or cmd == "LDA" or cmd in JUMP_CODES:
             addr += 3
         elif cmd == "DB":
-            # рахуємо довжину масиву байтів
             data_part = stripped[2:].strip()
             values = [v.strip() for v in data_part.split(',')]
             addr += len(values)
         else:
             addr += 1
 
-    # 2-й прохід: генеруємо байткод
     bytecode = b''
     for line in lines:
         stripped = line.strip()
@@ -420,7 +415,6 @@ def assemble_program(lines):
             continue
 
         if ':' in stripped:
-            # пропускаємо мітки, але інструкцію після мітки треба обробити
             _, rest = stripped.split(':', 1)
             stripped = rest.strip()
             if not stripped:
