@@ -1,12 +1,12 @@
-MY_ARRAY: DB "H", "E", "Y", 6
-MVI C, 0x04
-LXI H, MY_ARRAY
-loop:
-MOV A, M
-OUT 0
-OUT 0
+ ; 2..5
 
+MVI B, 5
+MVI A, 2
 
-INX H
-DCR C
-JNZ loop
+LOOP1:
+
+INR A
+
+ANA B
+
+JPE LOOP1

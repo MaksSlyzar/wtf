@@ -59,6 +59,7 @@ JUMP_CODES = {
     "JNZ": 0xC2,
     "JNC": 0xD2,
     "JPO": 0xE2,
+    "JPE": 0xEA
 }
 DCR_CODES = {
     "DCR B": 0x05,
@@ -182,7 +183,7 @@ LXI_CODES = {
 }
 
 JUMP_CODES = {
-    "JMP": 0xC3, "JC": 0xDA, "JNC": 0xD2, "JZ": 0xCA, "JNZ": 0xC2
+    "JMP": 0xC3, "JC": 0xDA, "JNC": 0xD2, "JZ": 0xCA, "JNZ": 0xC2, "JPE": 0xEA
 }
 
 INR_OPCODES = {
@@ -198,6 +199,16 @@ INX_OPCODES = {
     'D': 0x13,
     'H': 0x23,
     'SP': 0x33,
+}
+SUB_CODES = {
+    "SUB A": 0x97,
+    "SUB B": 0x90,
+    "SUB C": 0x91,
+    "SUB D": 0x92,
+    "SUB E": 0x93,
+    "SUB H": 0x94,
+    "SUB L": 0x95,
+    "SUB M": 0x96,
 }
 
 INR_OPCODES = {reg: 0x04 + (code << 3) for reg, code in REGISTER_CODES.items()}
@@ -246,6 +257,30 @@ def assemble_line(line, labels=None):
             else:
                 result_bytes.append(int(val, 0))
         return bytes(result_bytes)
+    
+    # STA addr
+    if line.startswith("STA "):
+        target = line[4:].strip()
+        if labels and target.upper() in labels:
+            addr = labels[target.upper()]
+        else:
+            try:
+                addr = int(target, 0)
+            except ValueError:
+                raise ValueError(f"Невірна адреса STA: {target}")
+        if not 0 <= addr <= 0xFFFF:
+            raise ValueError("STA: адреса має бути в межах 0–65535")
+        lo = addr & 0xFF
+        hi = (addr >> 8) & 0xFF
+        return bytes([0x32, lo, hi])
+
+    #TO_ASC
+    if line.startswith("TO_ASC A"):
+        # ADD 0x30 → MVI B,0x30 ; ADD B
+        return bytes([
+            MVI_OPCODES["B"], 0x30,  # MVI B, 0x30
+            0x80                     # ADD B
+        ])
 
     #INX
     if line.startswith("INX "):
@@ -325,11 +360,27 @@ def assemble_line(line, labels=None):
         except Exception:
             raise ValueError("Невірний синтаксис LXI")
 
+    #MUL
+
+    # LDA addr
+    if line.startswith("LDA "):
+        addr_str = line[4:].strip()
+        if labels and addr_str.upper() in labels:
+            addr = labels[addr_str.upper()]
+        else:
+            try:
+                addr = int(addr_str, 0)
+            except ValueError:
+                raise ValueError(f"Невірна адреса LDA: {addr_str}")
+        if not 0 <= addr <= 0xFFFF:
+            raise ValueError("Адреса повинна бути в межах 0–65535")
+        lo = addr & 0xFF
+        hi = (addr >> 8) & 0xFF
+        return bytes([0x3A, lo, hi])
 
 
-
-    # ALU регістрові (ADD, ADC, ANA, ORA, XRA, CMP)
-    for group in (ADD_CODES, ADC_CODES, ANA_CODES, ORA_CODES, XRA_CODES, CMP_CODES):
+    # ALU регістрові (ADD, ADC, ANA, ORA, XRA, CMP, SUB)
+    for group in (ADD_CODES, ADC_CODES, ANA_CODES, ORA_CODES, XRA_CODES, CMP_CODES, SUB_CODES):
         if line in group:
             return bytes([group[line]])
 
@@ -349,7 +400,7 @@ def assemble_line(line, labels=None):
         else:
             raise ValueError(f"Невідомий регістр DCR: {reg}")
 
-    # Jumps (JMP, JC, JNC, JZ, JNZ etc)
+    # Jumps (JMP, JC, JNC, JZ, JNZ, JPE etc)
     for mnemonic, opcode in JUMP_CODES.items():
         if line.startswith(mnemonic + " "):
             target = line[len(mnemonic) + 1:].strip()
@@ -366,63 +417,68 @@ def assemble_line(line, labels=None):
 
     raise ValueError(f"Невідома або непідтримувана інструкція: {line}")
 def get_instruction_size(cmd):
-    # Розміри команд, які ти використовуєш
-    two_byte_cmds = {"MVI", "ADI", "SUI", "INR", "DCR"}  # приклад
-    three_byte_cmds = {"LXI", "LDA", "STA", "JMP", "JC", "JNC", "JZ", "JNZ"}
+    two_byte_cmds = {"MVI", "ADI", "SUI", "INR", "DCR"} 
+    three_byte_cmds = {"LXI", "LDA", "STA", "JMP", "JC", "JNC", "JZ", "JNZ", "JPE"}
 
     if cmd in two_byte_cmds:
         return 2
     if cmd in three_byte_cmds or cmd in JUMP_CODES:
         return 3
-    # Всі інші – 1 байт
     return 1
 def assemble_program(lines):
     labels = {}
     addr = 0
 
     for line in lines:
-        stripped = line.strip()
-        if not stripped or stripped.startswith(';'):
+        line = line.split(';')[0].strip() 
+        if not line:
             continue
 
-        if ':' in stripped:
-            label_part, rest = stripped.split(':', 1)
+        if ':' in line:
+            label_part, rest = line.split(':', 1)
             label = label_part.strip().upper()
             labels[label] = addr
-            stripped = rest.strip()  
-            if not stripped:
-                continue  
+            line = rest.strip()
+            if not line:
+                continue
 
-        cmd = stripped.upper().split()[0]
-        if cmd == "MVI" or cmd == "MOV" or cmd == "ADD" or cmd == "ADC":
-            if cmd == "MVI":
-                addr += 2
-            else:
-                addr += 1
-        elif cmd == "LXI" or cmd == "LDA" or cmd in JUMP_CODES:
+        cmd = line.upper().split()[0]
+        if cmd == "MVI":
+            addr += 2
+        elif cmd in ["MOV", "ADD", "ADC"]:
+            addr += 1
+        elif cmd in ["LXI", "LDA"] or cmd in JUMP_CODES:
             addr += 3
         elif cmd == "DB":
-            data_part = stripped[2:].strip()
+            data_part = line[2:].strip()
             values = [v.strip() for v in data_part.split(',')]
             addr += len(values)
+        elif cmd == "MUL":
+            addr += 7
         else:
             addr += 1
 
     bytecode = b''
+    addr = 0
     for line in lines:
-        stripped = line.strip()
-        if not stripped or stripped.startswith(';'):
+        line = line.split(';')[0].strip()  
+        if not line:
             continue
 
-        if ':' in stripped:
-            _, rest = stripped.split(':', 1)
-            stripped = rest.strip()
-            if not stripped:
+        if ':' in line:
+            _, rest = line.split(':', 1)
+            line = rest.strip()
+            if not line:
                 continue
 
+        labels["_CURRENT_ADDR"] = addr  
+
         try:
-            bytecode += assemble_line(stripped, labels=labels)
+            bytes_out = assemble_line(line, labels=labels)
+            bytecode += bytes_out
+            addr += len(bytes_out)
         except Exception as e:
             print(f"[!] Помилка: {e} у рядку '{line}'")
+
     return bytecode
 
